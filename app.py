@@ -1,17 +1,20 @@
 import os
+import time
 
 from dotenv import load_dotenv
-from flask import Flask, send_from_directory, render_template, request, redirect, url_for, flash, session, \
-    after_this_request
+from flask import Flask, send_from_directory, render_template, request, redirect, url_for, flash, session
 from flask_bootstrap import Bootstrap
 from flask_dropzone import Dropzone
-from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect, CSRFError
+from werkzeug.utils import secure_filename
 
+from celery_utils import get_celery_app_instance
 from converter import pdf_to_mp3
 
+load_dotenv()
 
 app = Flask(__name__)
+celery = get_celery_app_instance(app)
 csrf = CSRFProtect(app)
 bootstrap = Bootstrap(app)
 dropzone = Dropzone(app)
@@ -19,7 +22,7 @@ dropzone = Dropzone(app)
 app.config.update(
     SECRET_KEY=os.environ.get('SECRET_KEY'),
     UPLOAD_FOLDER='uploads', DOWNLOAD_FOLDER='downloads',
-    DROPZONE_MAX_FILE_SIZE=3,  # 3Mb
+    DROPZONE_MAX_FILE_SIZE=3,  # Mb
     DROPZONE_MAX_FILES=1,
     DROPZONE_ALLOWED_FILE_CUSTOM=True,
     DROPZONE_ALLOWED_FILE_TYPE='.pdf',
@@ -77,13 +80,8 @@ def convert():
 
 @app.route('/download')
 def download():
-
-    @after_this_request
-    def clear_dirs(response):
-        os.remove(f"{app.config['UPLOAD_FOLDER']}/{session['pdf_file_name']}")
-        os.remove(f"{app.config['DOWNLOAD_FOLDER']}/{session['mp3_file_name']}")
-        return response
-
+    # function.delay() is used to trigger function as celery task
+    clear_uploads_downloads_dirs.delay()
     return send_from_directory(directory=app.config['DOWNLOAD_FOLDER'], path=session['mp3_file_name'],
                                as_attachment=True)
 
@@ -94,6 +92,14 @@ def csrf_error(e):
     return e.description, 400
 
 
+# celery tasks
+@celery.task
+def clear_uploads_downloads_dirs():
+    time.sleep(60)
+    os.remove(f"{app.config['UPLOAD_FOLDER']}/{session['pdf_file_name']}")
+    os.remove(f"{app.config['DOWNLOAD_FOLDER']}/{session['mp3_file_name']}")
+    return "Task completed!"
+
+
 if __name__ == '__main__':
-    load_dotenv()
     app.run()

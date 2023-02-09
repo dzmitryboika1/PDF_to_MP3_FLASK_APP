@@ -25,3 +25,6 @@ def pdf_to_mp3(pdf_file_path, output_dir_path):
         output_audio.save(f'{output_dir_path}/{mp3_file_name}')
 
         return mp3_file_name
+
+
+pdf_to_mp3('uploads/Test_PDF.pdf', 'downloads')
